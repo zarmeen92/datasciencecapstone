@@ -1,0 +1,205 @@
+---
+title: "Capstone Project Milestone Report"
+author: "Zarmeen"
+date: "June 12, 2016"
+output: html_document
+---
+
+---
+title: "Milestone Report"
+author: "Zarmeen"
+date: "June 11, 2016"
+output: html_document
+---
+
+### Abstract
+
+This report is a part of DataScience Capstone Project.Final goal of the project is to develop a predictive model for Swiftkey Application that can predict the next appropriate word based upon preceeding words.In this report,I have performed exploratory analysis of the data given by SwiftKey. 
+
+### R Packages Used
+
+I have used following R Packages to visualize and model textual data.
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+library(tm)
+library(stringi)
+library(RWeka)
+library(ggplot2) 
+library(wordcloud)
+library(dplyr)
+
+```
+
+### Loading Data
+
+Dataset consist of twitter tweets,blogs and news.
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+
+con <- file("D:\\DataScience\\Capstone\\Coursera-SwiftKey\\final\\en_US\\en_US.twitter.txt", "r")
+con1 <- file("D:\\DataScience\\Capstone\\Coursera-SwiftKey\\final\\en_US\\en_US.news.txt", "r")
+con2 <- file("D:\\DataScience\\Capstone\\Coursera-SwiftKey\\final\\en_US\\en_US.blogs.txt", "r")
+
+tweets <- readLines(con) 
+news <- readLines(con1) 
+blogs <- readLines(con2)
+close(con)
+close(con1)
+close(con2)
+
+```
+
+### Summary of Files
+
+After loading tweets,news and blogs,summary of these files is produced.
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+
+corpus_stats <- data.frame(File =  c("blogs","news","twitter"),t(rbind(sapply(list(blogs,news,tweets),stri_stats_general),
+          TotalWords = sapply(list(blogs,news,tweets),stri_stats_latex)[4,]))
+)
+print(corpus_stats)
+
+```
+
+
+### Sampling
+
+
+From the summary statistics,we can identify how large the corpus is.In order to do processing,I applied sampling and took 12K records from each file.
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+sampleCorpus <- list()
+tweetsSample <- tweets[sample(1:length(tweets),12000)]
+newsSample <- news[sample(1:length(news),12000)]
+blogsSample <- blogs[sample(1:length(blogs),12000)]
+rm(tweets,news,blogs)
+sampleCorpus <- c(tweetsSample,newsSample,blogsSample)
+writeLines(sampleCorpus, "./corpus/sampleCorpus.txt")
+length(sampleCorpus)
+
+```
+
+### Data Cleaning
+Using tm package in R,sample corpus is cleaning by doing following steps:
+
+1. Punctuation Removal
+2. Case conversion
+3. Removal of numbers
+4. Stop word removal
+5. Stemming
+6. Profanity filtering using a list of Bad words(available online)
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+badwords <- readLines('badwords.txt')
+
+directory <- file.path(".", "corpus")
+docs <- Corpus(DirSource(directory))
+
+## Preprocessing      
+docs <- tm_map(docs, removePunctuation)   # *Removing punctuation:*    
+docs <- tm_map(docs, removeNumbers)      # *Removing numbers:*    
+docs <- tm_map(docs, tolower)   # *Converting to lowercase:*    
+docs <- tm_map(docs, removeWords, stopwords("english"))   # *Removing "stopwords" 
+docs <- tm_map(docs, removeWords, badwords)   # *Removing "badwords" 
+docs <- tm_map(docs, stemDocument)   # *Removing common word endings* (e.g., "ing", "es")   
+docs <- tm_map(docs, stripWhitespace)   # *Stripping whitespace   
+docs <- tm_map(docs, PlainTextDocument)   
+
+```
+
+### N-gram Tokenization
+
+After preprocessing,next step was to tokenize cleaned corpus into n-grams.N-gram refers to a sequence of n words occuring in a corpus.
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+unigramTokenizer <- function(x) {
+  NGramTokenizer(x, Weka_control(min = 1, max = 1))
+}
+unigrams <- DocumentTermMatrix(docs, control = list(tokenize = unigramTokenizer))
+BigramTokenizer <- function(x) {
+  NGramTokenizer(x, Weka_control(min = 2, max = 2))
+}
+bigrams <- DocumentTermMatrix(docs, control = list(tokenize = BigramTokenizer))
+
+TrigramTokenizer <- function(x) {
+  NGramTokenizer(x, Weka_control(min = 3, max = 3))
+}
+trigrams <- DocumentTermMatrix(docs, control = list(tokenize = TrigramTokenizer))
+
+```
+
+### Exploratory Analysis
+
+After tokenizing corpus,I tried to find out the most frequently occuring unigrams,bigrams and trigrams in the given dataset.
+
+#### Most frequent Unigrams
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+unigrams_freq <- sort(colSums(as.matrix(unigrams)),decreasing = TRUE)
+unigrams_freq_df <- data.frame(word = names(unigrams_freq), frequency = unigrams_freq)
+head(unigrams_freq_df, 10)
+
+unigrams_freq_df_f <- unigrams_freq_df[unigrams_freq_df$frequency > 1500,]
+p <- ggplot(unigrams_freq_df_f, aes(reorder(word,-frequency), frequency))    
+p <- p + geom_bar(stat="identity",fill = "red",alpha = 0.6)   
+p <- p + xlab("Unigrams") + ylab("Frequency") + ggtitle("Unigrams with Frequency > 1500")
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))   
+p   
+```
+
+WordCloud of Unigrams is shown below :
+```{r warning=FALSE,message=FALSE,error=FALSE }
+wordcloud(unigrams_freq_df$word,unigrams_freq_df$frequency, max.words=50, random.order=FALSE, use.r.layout=FALSE, colors=brewer.pal(8,"Dark2"))
+```
+
+#### Most frequent bigrams
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+bigrams_freq <- sort(colSums(as.matrix(bigrams)),decreasing = TRUE)
+bigrams_freq_df <- data.frame(word = names(bigrams_freq), frequency = bigrams_freq)
+head(bigrams_freq_df, 10)
+bigrams_freq_df_f <- bigrams_freq_df[bigrams_freq_df$frequency > 100,]
+dim(bigrams_freq_df_f)
+p <- ggplot(bigrams_freq_df_f, aes(reorder(word,-frequency), frequency))    
+p <- p + geom_bar(stat="identity",fill = "blue",alpha = 0.6)   
+p <- p + xlab("Bigrams") + ylab("Frequency") + ggtitle("Bigrams with frequency > 100")
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))   
+p   
+```
+
+WordCloud of bigrams is shown below :
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+wordcloud(bigrams_freq_df$word,bigrams_freq_df$frequency, max.words=50, random.order=FALSE, use.r.layout=FALSE, colors=brewer.pal(8,"Dark2"))
+```
+
+#### Most frequent Trigrams
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+trigrams_freq <- sort(colSums(as.matrix(trigrams)),decreasing = TRUE)
+trigrams_freq_df <- data.frame(word = names(trigrams_freq), frequency = trigrams_freq)
+head(trigrams_freq_df, 10)
+trigrams_freq_df_f <- trigrams_freq_df[trigrams_freq_df$frequency > 10,]
+dim(trigrams_freq_df_f)
+p <- ggplot(trigrams_freq_df_f, aes(reorder(word,-frequency), frequency))    
+p <- p + geom_bar(stat="identity",fill = "purple",alpha = 0.6)   
+p <- p + xlab("Trigrams") + ylab("Frequency") + ggtitle("Trigrams with frequency > 10")
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))   
+p   
+```
+
+Word cloud of trigrams is shown below :
+
+```{r warning=FALSE,message=FALSE,error=FALSE}
+wordcloud(trigrams_freq_df$word,trigrams_freq_df$frequency, max.words=50, random.order=FALSE, use.r.layout=FALSE, colors=brewer.pal(8,"Dark2"))
+
+
+```
+
+### Future Plans
+
+After performing exploratory analysis of data,next step is to:
+
+1. Build a basic n-gram model for predicting the next word based on the previous 1, 2, or 3 words.
+2. Deal with unseen n-grams using Backoff or interpolation techniques.
